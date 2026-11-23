@@ -226,6 +226,12 @@ textarea.inp{resize:vertical;min-height:52px}
   width:100%;border:1px solid var(--line2);background:transparent;color:var(--ink);
   border-radius:14px;padding:13px;font-size:14px;cursor:pointer;
 }
+.formlink{
+  display:block;margin-top:10px;padding:11px 12px;text-align:center;text-decoration:none;
+  font-size:12.5px;color:var(--gold-deep);background:var(--gold-wash);
+  border:1px solid var(--gold-soft);border-radius:12px;line-height:1.4;
+}
+.formlink small{display:block;margin-top:3px;font-size:11px;color:var(--muted);font-weight:400}
 
 /* location */
 .loc{display:flex;flex-direction:column;gap:10px}
@@ -403,6 +409,7 @@ textarea.inp{resize:vertical;min-height:52px}
       <h2 class="sec-h"><small>Admin</small><span>예약 현황</span></h2>
       <div class="panel stats" id="adminStats"></div>
       <p class="hint">이 화면은 이 기기에 저장된 예약만 보여요. (아래 관리 기능은 브라우저 localStorage에 저장됩니다)</p>
+      <a class="formlink" id="formLink" href="https://docs.google.com/forms/d/1f0IPRNlj5ZKspX5G0ihR3F_xXgjALllhixIn7KEIqhs/edit#responses" target="_blank" rel="noopener noreferrer">📋 Google 폼/시트에서 접수 내역 보기<small>원장님 계정으로 로그인하면 응답 시트가 열려요</small></a>
     </section>
 
     <section class="sec">
@@ -742,6 +749,50 @@ function applyKind(){
   if(kind) refresh();
 }
 
+/* ── Google Form 접수 연동 ──────────────────────────────── */
+/* 신청 내용을 구글 폼 응답으로도 자동 전송해요. 전송이 실패해도
+   localStorage 저장과 완료 화면은 그대로 정상 진행됩니다. */
+var FORM_URL='https://docs.google.com/forms/d/e/1FAIpQLSfaVw5zJQjSkdG7Tgp5tGJUJUsqiLxhoXguNumsUe2aNd969A/formResponse';
+var FORM_SHEET='https://docs.google.com/forms/d/1f0IPRNlj5ZKspX5G0ihR3F_xXgjALllhixIn7KEIqhs/edit#responses';
+var FE={ kind:'entry.1184042729', svc:'entry.664788457', date:'entry.1410511332',
+         time:'entry.1123982938', name:'entry.480682421', sex:'entry.2071186998',
+         phone:'entry.1495596098', memo:'entry.1043905311', price:'entry.1363910358' };
+function formFields(b){
+  var v=SV[b.svc]||{n:'',m:''};
+  return {
+    kind: KIND_LABEL[b.kind]||'',
+    svc: v.n ? (v.n+' ('+(v.m||'')+'분)') : '',
+    date: b.date||'',
+    time: b.time||'',
+    name: b.name||'',
+    sex: b.sex==='여' ? '여성' : '남성',
+    phone: b.phone||'',
+    memo: (b.memo&&b.memo.trim()) ? b.memo.trim() : '-',
+    price: b.kind==='pass' ? '회원권 차감 (0원)' : won(b.price)
+  };
+}
+function markForm(id,st){
+  try{
+    var a=readBookings();
+    a.forEach(function(x){ if(x.id===id){ x.form=st; x.formAt=Date.now(); } });
+    writeBookings(a);
+  }catch(e){}
+}
+function sendToForm(b){
+  var p=new URLSearchParams(), f=formFields(b);
+  Object.keys(FE).forEach(function(k){ p.append(FE[k], f[k]); });
+  try{
+    return fetch(FORM_URL, {
+      method:'POST',
+      mode:'no-cors',
+      keepalive:true,
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:p.toString()
+    }).then(function(){ markForm(b.id,'ok'); return true; })
+      .catch(function(){ markForm(b.id,'fail'); return false; });
+  }catch(e){ markForm(b.id,'fail'); return Promise.resolve(false); }
+}
+
 /* ── 예약 신청 ──────────────────────────────────────────── */
 function validate(){
   var miss=[];
@@ -782,6 +833,7 @@ function submit(){
   writeBookings(all);
   $('err').textContent='';
   showDone(b);
+  sendToForm(b);
   toast('예약 신청이 접수됐어요');
 }
 
@@ -937,6 +989,7 @@ function adminCard(b){
       + '<div class="bk-top"><b>'+korDate(b.date)+' '+hm(b.time)+'</b><span class="pill '+tone+'">'+pill+'</span></div>'
       + '<div class="bk-mid"><em>'+v.n+' '+(v.m||'')+'분</em><span>·</span><span>'+(KIND_LABEL[b.kind]||'')+'</span><span>·</span><span>'+(b.kind==='pass'?'회차 차감':won(b.price))+'</span></div>'
       + '<div class="bk-who">'+esc(b.name)+' · '+(b.sex==='여'?'여성':'남성')+' · '+esc(b.phone)+'</div>';
+  if(b.form==='fail') h+='<div class="bk-memo" style="color:var(--bad)">⚠ 구글 폼 전송이 확인되지 않았어요. 접수 내용은 이 화면에 그대로 있어요.</div>';
   if(b.memo) h+='<div class="bk-memo">“'+esc(b.memo)+'”</div>';
   var acts='';
   if(b.status==='pending'||b.status==='paid') acts+='<button type="button" data-ok="'+b.id+'">확정</button>';
