@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://01039056964.github.io/pim-pt-booking/sitemap.xml
